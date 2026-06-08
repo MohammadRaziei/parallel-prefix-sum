@@ -1,0 +1,110 @@
+# === C++ & Compiled Files ===
+*.o
+*.obj
+*.elf
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.a
+*.la
+*.lo
+*.so
+*.so.*
+*.dylib
+*.exe
+*.out
+*.app
+*.i
+*.s
+
+# === CUDA ===
+*.fatbin
+*.cubin
+*.ptx
+*.compute
+*.opt.ic
+*.cudafe1.*
+*.cudafe2.*
+*.hash
+*.nvlink
+*.nvprof
+
+# === CMake ===
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+install/
+Makefile
+# نادیده گرفتن پوشه بیلد (استاندارد اکثر پروژه‌ها)
+build/
+out/
+/bin/
+/lib/
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.venv
+venv/
+ENV/
+env.bak/
+venv.bak/
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# === VS Code ===
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+.history/
+
+# === JetBrains (CLion, PyCharm) ===
+.idea/
+cmake-build-*/
+*.iws
+*.iml
+*.ipr
+
+# === Vim ===
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+*.un~
+*~
+.netrwhist
+tags
+Session.vim
+
+# === OS Files ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Log Files ===
+*.log
