@@ -19,8 +19,8 @@ int main() {
     // =========================================================
     // PART 1: BIT REVERSAL TEST (MANUAL VERIFICATION)
     // =========================================================
-    const int testSize = 10;
     const int nBits = 4; // Testing with 4 bits (values 0-15)
+    const int testSize = 1 << nBits;
     
     std::vector<unsigned int> h_bit_in(testSize);
     std::vector<unsigned int> h_bit_out(testSize);
@@ -29,14 +29,15 @@ int main() {
     for (int i = 0; i < testSize; i++) h_bit_in[i] = i;
 
     std::cout << "================ BIT REVERSAL TEST ================" << std::endl;
-    std::cout << "Testing 10 examples using gpuBitReverse wrapper (n=" << nBits << " bits)" << std::endl;
+    std::cout << "Testing " << testSize << " examples using gpuBitReverse wrapper (n=" << nBits << " bits)" << std::endl;
     
     gpuBitReverse(h_bit_out.data(), h_bit_in.data(), nBits, testSize);
 
     std::cout << "Input (Dec) \t-> \tOutput (Dec)" << std::endl;
     std::cout << "-----------------------------------------------" << std::endl;
     for (int i = 0; i < testSize; i++) {
-        std::cout << "Value: " << h_bit_in[i] << "\t\t-> \t" << h_bit_out[i] << std::endl;
+        const auto omega_i = (1 << nBits) - 1 - h_bit_out[i];
+        std::cout << "Value: " << h_bit_in[i] << "\t-> \t" << omega_i << std::endl;
     }
     std::cout << "===============================================\n" << std::endl;
 
