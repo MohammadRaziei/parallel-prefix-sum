@@ -36,8 +36,7 @@ int main() {
     std::cout << "Input (Dec) \t-> \tOutput (Dec)" << std::endl;
     std::cout << "-----------------------------------------------" << std::endl;
     for (int i = 0; i < testSize; i++) {
-        const auto omega_i = (1 << nBits) - 1 - h_bit_out[i];
-        std::cout << "Value: " << h_bit_in[i] << "\t-> \t" << omega_i << std::endl;
+        std::cout << "Value: " << h_bit_in[i] << "\t-> \t" << h_bit_out[i] << std::endl;
     }
     std::cout << "===============================================\n" << std::endl;
 
