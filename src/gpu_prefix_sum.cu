@@ -68,86 +68,53 @@ __device__ __forceinline__ unsigned int bit_reverse_pow2(unsigned int x, int n_p
     return __brev(x) >> (1 + __clz(n_pow2));
 }
 
-// Global kernel: Each thread reverses one element of the array
 __global__ void bitReverseKernel(unsigned int* d_out, unsigned int* d_in, int m_bits, int size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    if (idx < size) {
-        d_out[idx] = bit_reverse(d_in[idx], m_bits);
-    }
+    if (idx < size) d_out[idx] = bit_reverse(d_in[idx], m_bits);
 }
 
-// Global kernel: Each thread reverses one element of the array
 __global__ void bitReversePow2Kernel(unsigned int* d_out, unsigned int* d_in, int n_pow2, int size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    if (idx < size) {
-        d_out[idx] = bit_reverse_pow2(d_in[idx], n_pow2);
-    }
+    if (idx < size) d_out[idx] = bit_reverse_pow2(d_in[idx], n_pow2);
 }
 
+
+template <typename KernelFunc>
+void gpuBitReverseRunner(KernelFunc kernel, unsigned int* h_out, const unsigned int* h_in, int param, int size) {
+    unsigned int *d_in, *d_out;
+    size_t bytes = size * sizeof(unsigned int);
+
+    // 1. Allocation
+    HANDLE_ERROR(cudaMalloc(&d_in, bytes));
+    HANDLE_ERROR(cudaMalloc(&d_out, bytes));
+
+    // 2. Host to Device
+    HANDLE_ERROR(cudaMemcpy(d_in, h_in, bytes, cudaMemcpyHostToDevice));
+
+    // 3. Launch Logic
+    int blockSize = 1024; // 1024 threads per block
+    int gridSize = (size + blockSize - 1) / blockSize;
+    
+    kernel<<<gridSize, blockSize>>>(d_out, d_in, param, size);
+
+    HANDLE_ERROR(cudaGetLastError());
+    HANDLE_ERROR(cudaDeviceSynchronize());
+
+    // 4. Device to Host
+    HANDLE_ERROR(cudaMemcpy(h_out, d_out, bytes, cudaMemcpyDeviceToHost));
+
+    // 5. Cleanup
+    HANDLE_ERROR(cudaFree(d_in));
+    HANDLE_ERROR(cudaFree(d_out));
+}
 
 void gpuBitReverse(unsigned int* h_out, const unsigned int* h_in, int n, int size) {
-    unsigned int *d_in, *d_out;
-    size_t bytes = size * sizeof(unsigned int);
-
-    // Allocation
-    HANDLE_ERROR(cudaMalloc(&d_in, bytes));
-    HANDLE_ERROR(cudaMalloc(&d_out, bytes));
-
-    // Data Transfer to GPU
-    HANDLE_ERROR(cudaMemcpy(d_in, h_in, bytes, cudaMemcpyHostToDevice));
-
-    // Kernel Launch
-    int blockSize = 1024; // Assuming size is a power of 2 and <= 1024
-    int gridSize = (size + blockSize - 1) / blockSize;
-    bitReverseKernel<<<gridSize, blockSize>>>(d_out, d_in, n, size);
-
-    // Check for launch errors (e.g. invalid dimensions)
-    HANDLE_ERROR(cudaGetLastError());
-
-    // Wait for completion and check for execution errors
-    HANDLE_ERROR(cudaDeviceSynchronize());
-
-    // Data Transfer back to CPU
-    HANDLE_ERROR(cudaMemcpy(h_out, d_out, bytes, cudaMemcpyDeviceToHost));
-
-    // Cleanup
-    HANDLE_ERROR(cudaFree(d_in));
-    HANDLE_ERROR(cudaFree(d_out));
+    gpuBitReverseRunner(bitReverseKernel, h_out, h_in, n, size);
 }
-
 
 void gpuBitReversePow2(unsigned int* h_out, const unsigned int* h_in, int n, int size) {
-    unsigned int *d_in, *d_out;
-    size_t bytes = size * sizeof(unsigned int);
-
-    // Allocation
-    HANDLE_ERROR(cudaMalloc(&d_in, bytes));
-    HANDLE_ERROR(cudaMalloc(&d_out, bytes));
-
-    // Data Transfer to GPU
-    HANDLE_ERROR(cudaMemcpy(d_in, h_in, bytes, cudaMemcpyHostToDevice));
-
-    // Kernel Launch
-    int blockSize = 1024; // Assuming size is a power of 2 and <= 1024
-    int gridSize = (size + blockSize - 1) / blockSize;
-    bitReversePow2Kernel<<<gridSize, blockSize>>>(d_out, d_in, n, size);
-
-    // Check for launch errors (e.g. invalid dimensions)
-    HANDLE_ERROR(cudaGetLastError());
-
-    // Wait for completion and check for execution errors
-    HANDLE_ERROR(cudaDeviceSynchronize());
-
-    // Data Transfer back to CPU
-    HANDLE_ERROR(cudaMemcpy(h_out, d_out, bytes, cudaMemcpyDeviceToHost));
-
-    // Cleanup
-    HANDLE_ERROR(cudaFree(d_in));
-    HANDLE_ERROR(cudaFree(d_out));
+    gpuBitReverseRunner(bitReversePow2Kernel, h_out, h_in, n, size);
 }
-
 
 __global__ void bitReverseScanKernel(float ac[]){
     extern __shared__ float sdata[];// allocated on invocation

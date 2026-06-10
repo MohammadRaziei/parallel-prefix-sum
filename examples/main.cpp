@@ -16,34 +16,6 @@ double calculateMAE(const float* arr1, const float* arr2, int n) {
 }
 
 int main() {
-    // =========================================================
-    // PART 1: BIT REVERSAL TEST (MANUAL VERIFICATION)
-    // =========================================================
-    const int nBits = 4; // Testing with 4 bits (values 0-15)
-    const int testSize = 1 << nBits;
-    
-    std::vector<unsigned int> h_bit_in(testSize);
-    std::vector<unsigned int> h_bit_out(testSize);
-
-    // Fill input with 0, 1, 2, ..., 9
-    for (int i = 0; i < testSize; i++) h_bit_in[i] = i;
-
-    std::cout << "================ BIT REVERSAL TEST ================" << std::endl;
-    std::cout << "Testing " << testSize << " examples using gpuBitReverse wrapper (n=" << nBits << " bits)" << std::endl;
-    
-    gpuBitReverse(h_bit_out.data(), h_bit_in.data(), nBits, testSize);
-
-    std::cout << "Input (Dec) \t-> \tOutput (Dec)" << std::endl;
-    std::cout << "-----------------------------------------------" << std::endl;
-    for (int i = 0; i < testSize; i++) {
-        std::cout << "Value: " << h_bit_in[i] << "\t-> \t" << h_bit_out[i] << std::endl;
-    }
-    std::cout << "===============================================\n" << std::endl;
-
-
-    // =========================================================
-    // PART 2: PREFIX SUM TEST (GPU VS CPU)
-    // =========================================================
     const int N = 1024; 
     std::vector<float> h_input(N);
     for (int i = 0; i < N; ++i) {
