@@ -92,7 +92,7 @@ void gpuBitReverseRunner(KernelFunc kernel, unsigned int* h_out, const unsigned 
     HANDLE_ERROR(cudaMemcpy(d_in, h_in, bytes, cudaMemcpyHostToDevice));
 
     // 3. Launch Logic
-    int blockSize = 1024; // 1024 threads per block
+    int blockSize = (size < 1024) ? ((size + 31) / 32) * 32 : 1024;
     int gridSize = (size + blockSize - 1) / blockSize;
     
     kernel<<<gridSize, blockSize>>>(d_out, d_in, param, size);
