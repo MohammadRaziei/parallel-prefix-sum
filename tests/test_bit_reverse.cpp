@@ -36,7 +36,7 @@ UTEST_I_TEARDOWN(BitReverseRangeTest) {
 /**
  * Test loop from n=8 to n=4096 (10 iterations)
  */
-UTEST_I(BitReverseRangeTest, RangeFrom8To2048, 10) {
+UTEST_I(BitReverseRangeTest, RecursiveFunctionOmega, 10) {
     const int current_nBits = 3 + utest_fixture->current_index;
     const int n_val = 1 << current_nBits;
 
@@ -68,30 +68,11 @@ UTEST_I(BitReverseRangeTest, RangeFrom8To2048, 10) {
 }
 
 
-
-
-
-/**
- * Fixture to compare the two different implementations
- */
-struct BitReverseComparisonFixture {
-    int current_index;
-};
-
-UTEST_I_SETUP(BitReverseComparisonFixture) {
-    utest_fixture->current_index = (int)utest_index;
-}
-
-UTEST_I_TEARDOWN(BitReverseComparisonFixture) {
-    (void)utest_fixture;
-    (void)utest_index;
-}
-
 /**
  * Parameterized Test: Compare gpuBitReverse vs gpuBitReversePow2
  * Iterations: 10 (from 2^3 to 2^12)
  */
-UTEST_I(BitReverseComparisonFixture, CompareImplementations, 10) {
+UTEST_I(BitReverseRangeTest, CompareImplementations, 10) {
     // 1. Calculate parameters based on index
     const int m_bits = 3 + utest_fixture->current_index; // 3, 4, ..., 12
     const int size = 1 << m_bits;                       // 8, 16, ..., 4096
