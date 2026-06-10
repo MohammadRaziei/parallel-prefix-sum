@@ -53,6 +53,12 @@ UTEST_I(BitReverseRangeTest, RangeFrom8To2048, 10) {
     gpuBitReverse((unsigned int*)h_out.data(), (unsigned int*)h_in.data(), current_nBits, n_val);
 
     for (int i = 0; i < n_val; i++) {
+        if (i > 0) {
+            // Sanity check to ensure outputs are not all the same (which would indicate a potential issue)
+            EXPECT_NE(h_out[i], h_out[i - 1]); // Ensure outputs are not all the same (sanity check)
+        }
+
+        // Compare the GPU output with the expected value from the recursive formula
         int actual_omega_i = (n_val - 1) - h_out[i];
         int expected_omega_i = calculate_expected_omega(i, n_val);
 
@@ -112,5 +118,10 @@ UTEST_I(BitReverseComparisonFixture, CompareImplementations, 10) {
         // We compare the results of the two GPU implementations directly
         // They should match bit-for-bit
         EXPECT_EQ(h_out_bits[i], h_out_pow2[i]);
+
+        if (i > 0) {
+            // Additional sanity check to ensure outputs are not all the same (which would indicate a potential issue)
+            EXPECT_NE(h_out_bits[i], h_out_bits[i - 1]); // Ensure outputs are not all the same (sanity check)
+        }
     }
 }
