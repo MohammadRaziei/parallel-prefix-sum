@@ -6,5 +6,6 @@ void gpuBitReverse(unsigned int* h_out, const unsigned int* h_in, int n, int siz
 void gpuBitReversePow2(unsigned int* h_out, const unsigned int* h_in, int n, int size);
 
 template <typename T> void gpuVanillaPrefixSum(T* h_data, int n);
+template <typename T> void gpuBitReversePrefixSum(T* h_data, int n);
 
 #endif

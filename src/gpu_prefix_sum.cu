@@ -5,7 +5,7 @@
 // --- 1. Define the Error Handling Macro ---
 static void handleError(cudaError_t err, const char *file, int line) {
     if (err != cudaSuccess) {
-        fprintf(stderr, "CUDA Error: %s in %s at line %d\n", 
+        fprintf(stderr, "CUDA Error: %s in %s:%d\n", 
                 cudaGetErrorString(err), file, line);
         exit(EXIT_FAILURE);
     }
@@ -72,42 +72,9 @@ void gpuBitReversePow2(unsigned int* h_out, const unsigned int* h_in, int n, int
     gpuBitReverseRunner(bitReversePow2Kernel, h_out, h_in, n, size);
 }
 
-__global__ void bitReverseScanKernel(float ac[]){
-    extern __shared__ float sdata[];// allocated on invocation
-    float lastElement; 
-    const int n = blockDim.x;
-    const int idx = blockIdx.x * n + (n - 1 - bit_reverse_pow2(threadIdx.x, n));
-
-    sdata[threadIdx.x] = ac[idx]; // global memory coalescing
-    for (unsigned int s = n >> 1; s > 0; s >>= 1) {
-        __syncthreads();
-        if (threadIdx.x < s) {
-            sdata[threadIdx.x] += sdata[threadIdx.x + s];
-        }
-    }
-    __syncthreads();
-    if (threadIdx.x == n - 1) {  
-        lastElement = sdata[0];
-        sdata[0] = 0;  // clear the last element
-    }
-    for (unsigned int s = 1; s < n; s <<= 1) {
-        __syncthreads();
-        if (threadIdx.x < s) {
-            float tmp = sdata[threadIdx.x + s];
-            sdata[threadIdx.x + s] = sdata[threadIdx.x];
-            sdata[threadIdx.x] += tmp;
-        }
-    }
-    __syncthreads();
-    if(threadIdx.x == n - 1)
-        ac[idx + n - 1] = lastElement;
-    else 
-        ac[idx-1] = sdata[threadIdx.x];
-}
-
 
 template <typename T>
-__global__ void blellochKernel(T *ac) {
+__global__ void vannilaKernel(T *ac) {
     extern __shared__ unsigned char shared_memory[]; // allocated on invocation
     T* sdata = reinterpret_cast<T*>(shared_memory);
     T lastElement = 0;
@@ -157,10 +124,11 @@ __global__ void blellochKernel(T *ac) {
 template <typename T>
 void gpuVanillaPrefixSum(T* h_data, int n) {
     T* d_data;
-    size_t bytes = n * sizeof(T);
+    const size_t n_bytes = n * sizeof(T);
+    const size_t shared_memory_size = n_bytes;
 
-    HANDLE_ERROR(cudaMalloc(&d_data, bytes));
-    HANDLE_ERROR(cudaMemcpy(d_data, h_data, bytes, cudaMemcpyHostToDevice));
+    HANDLE_ERROR(cudaMalloc(&d_data, n_bytes));
+    HANDLE_ERROR(cudaMemcpy(d_data, h_data, n_bytes, cudaMemcpyHostToDevice));
 
 
     int threadsPerBlock = n; 
@@ -170,14 +138,82 @@ void gpuVanillaPrefixSum(T* h_data, int n) {
         threadsPerBlock = 1024;
     }
 
-    blellochKernel<T><<<1, threadsPerBlock>>>(d_data);
+    vannilaKernel<T><<<1, threadsPerBlock, shared_memory_size>>>(d_data);
 
     HANDLE_ERROR(cudaGetLastError());
     HANDLE_ERROR(cudaDeviceSynchronize());
 
-    HANDLE_ERROR(cudaMemcpy(h_data, d_data, bytes, cudaMemcpyDeviceToHost));
+    HANDLE_ERROR(cudaMemcpy(h_data, d_data, n_bytes, cudaMemcpyDeviceToHost));
     HANDLE_ERROR(cudaFree(d_data));
 }
 template void gpuVanillaPrefixSum<int>(int* h_data, int n);
 template void gpuVanillaPrefixSum<float>(float* h_data, int n);
 template void gpuVanillaPrefixSum<unsigned int>(unsigned int* h_data, int n);
+
+
+template <typename T>
+__global__ void bitReverseScanKernel(T ac[]){
+    extern __shared__ unsigned char shared_memory[]; // allocated on invocation
+    T* sdata = reinterpret_cast<T*>(shared_memory);
+    
+    T lastElement; 
+    const int n = blockDim.x;
+    const int idx = blockIdx.x * n + (n - 1 - bit_reverse_pow2(threadIdx.x, n));
+
+    sdata[threadIdx.x] = ac[idx]; // global memory coalescing
+    for (unsigned int s = n >> 1; s > 0; s >>= 1) {
+        __syncthreads();
+        if (threadIdx.x < s) {
+            sdata[threadIdx.x] += sdata[threadIdx.x + s];
+        }
+    }
+    __syncthreads();
+    if (threadIdx.x == n - 1) {  
+        lastElement = sdata[0];
+        sdata[0] = 0;  // clear the last element
+    }
+    for (unsigned int s = 1; s < n; s <<= 1) {
+        __syncthreads();
+        if (threadIdx.x < s) {
+            T tmp = sdata[threadIdx.x + s];
+            sdata[threadIdx.x + s] = sdata[threadIdx.x];
+            sdata[threadIdx.x] += tmp;
+        }
+    }
+    __syncthreads();
+    if(threadIdx.x == n - 1)
+        ac[idx + n - 1] = lastElement;
+    else 
+        ac[idx-1] = sdata[threadIdx.x];
+}
+
+
+template <typename T>
+void gpuBitReversePrefixSum(T* h_data, int n) {
+    T* d_data;
+    const size_t n_bytes = n * sizeof(T);
+    const size_t shared_memory_size = n_bytes;
+
+    HANDLE_ERROR(cudaMalloc(&d_data, n_bytes));
+    HANDLE_ERROR(cudaMemcpy(d_data, h_data, n_bytes, cudaMemcpyHostToDevice));
+
+
+    int threadsPerBlock = n; 
+    if (n > 1024) {
+        // Here you should ideally throw an error or use a Multi-block Scan logic
+        printf("Warning: Vanilla Blelloch is limited to 1024 threads per block!\n");
+        threadsPerBlock = 1024;
+    }
+
+    bitReverseScanKernel<T><<<1, threadsPerBlock, shared_memory_size>>>(d_data);
+
+    HANDLE_ERROR(cudaGetLastError());
+    HANDLE_ERROR(cudaDeviceSynchronize());
+
+    HANDLE_ERROR(cudaMemcpy(h_data, d_data, n_bytes, cudaMemcpyDeviceToHost));
+    HANDLE_ERROR(cudaFree(d_data));
+}
+template void gpuBitReversePrefixSum<int>(int* h_data, int n);
+template void gpuBitReversePrefixSum<float>(float* h_data, int n);
+template void gpuBitReversePrefixSum<unsigned int>(unsigned int* h_data, int n);
+
