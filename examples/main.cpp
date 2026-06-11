@@ -59,7 +59,7 @@ int main() {
     const int N = 1024; 
     std::vector<float> h_input(N);
     for (int i = 0; i < N; ++i) {
-        h_input[i] = static_cast<float>(i); 
+        h_input[i] = static_cast<float>(1); 
     }
 
     std::vector<float> cpu_buffer = h_input;
