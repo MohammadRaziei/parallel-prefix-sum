@@ -12,50 +12,6 @@ static void handleError(cudaError_t err, const char *file, int line) {
 }
 #define HANDLE_ERROR( err ) (handleError(err, __FILE__, __LINE__))
 
-__global__ void blellochKernel(float *ac)
-{
-    extern __shared__ float sdata[]; // allocated on invocation
-    float lastElement = 0;
-    const int n = blockDim.x;
-    const int idx = blockIdx.x * n + threadIdx.x;
-    sdata[threadIdx.x] = ac[idx];
-    int offset = 1;
-    for (int d = n >> 1; d > 0; d >>= 1)
-    { // build sum in place up the tree
-        __syncthreads();
-        if (threadIdx.x < d)
-        {
-            const int ai = offset * (2 * threadIdx.x + 1) - 1;
-            const int bi = offset * (2 * threadIdx.x + 2) - 1;
-            sdata[bi] += sdata[ai];
-        }
-        offset <<= 1;
-    }
-    if (threadIdx.x == 0)
-    {
-        lastElement = sdata[n - 1];
-        sdata[n - 1] = 0; // clear the last element
-    }
-    for (int d = 1; d < n; d <<= 1)
-    { // build scan
-        offset >>= 1;
-        __syncthreads();
-        if (threadIdx.x < d)
-        {
-            const int ai = offset * (2 * threadIdx.x + 1) - 1;
-            const int bi = offset * (2 * threadIdx.x + 2) - 1;
-            float tmp = sdata[ai];
-            sdata[ai] = sdata[bi];
-            sdata[bi] += tmp;
-        }
-    }
-    __syncthreads();
-    if (threadIdx.x == 0)
-        ac[idx + n - 1] = lastElement;
-    else
-        ac[idx - 1] = sdata[threadIdx.x];
-}
-
 __device__ __forceinline__ unsigned int bit_reverse(unsigned int x, int m_bits) {
     return __brev(x) >> (32 - m_bits);
 }
@@ -150,17 +106,78 @@ __global__ void bitReverseScanKernel(float ac[]){
 }
 
 
-
-
-
-void gpuPrefixSum(float* h_data, int n) {
-    float* d_data;
-    size_t size = n * sizeof(float);
-    cudaMalloc(&d_data, size);
-    cudaMemcpy(d_data, h_data, size, cudaMemcpyHostToDevice);
-
-    blellochKernel<<<1, n>>>(d_data);
-
-    cudaMemcpy(h_data, d_data, size, cudaMemcpyDeviceToHost);
-    cudaFree(d_data);
+template <typename T>
+__global__ void blellochKernel(T *ac) {
+    extern __shared__ unsigned char shared_memory[]; // allocated on invocation
+    T* sdata = reinterpret_cast<T*>(shared_memory);
+    T lastElement = 0;
+    const int n = blockDim.x;
+    const int idx = blockIdx.x * n + threadIdx.x;
+    sdata[threadIdx.x] = ac[idx];
+    int offset = 1;
+    for (int d = n >> 1; d > 0; d >>= 1)
+    { // build sum in place up the tree
+        __syncthreads();
+        if (threadIdx.x < d)
+        {
+            const int ai = offset * (2 * threadIdx.x + 1) - 1;
+            const int bi = offset * (2 * threadIdx.x + 2) - 1;
+            sdata[bi] += sdata[ai];
+        }
+        offset <<= 1;
+    }
+    if (threadIdx.x == 0)
+    {
+        lastElement = sdata[n - 1];
+        sdata[n - 1] = 0; // clear the last element
+    }
+    for (int d = 1; d < n; d <<= 1)
+    { // build scan
+        offset >>= 1;
+        __syncthreads();
+        if (threadIdx.x < d)
+        {
+            const int ai = offset * (2 * threadIdx.x + 1) - 1;
+            const int bi = offset * (2 * threadIdx.x + 2) - 1;
+            T tmp = sdata[ai];
+            sdata[ai] = sdata[bi];
+            sdata[bi] += tmp;
+        }
+    }
+    __syncthreads();
+    if (threadIdx.x == 0)
+        ac[idx + n - 1] = lastElement;
+    else
+        ac[idx - 1] = sdata[threadIdx.x];
 }
+
+
+
+
+template <typename T>
+void gpuVanillaPrefixSum(T* h_data, int n) {
+    T* d_data;
+    size_t bytes = n * sizeof(T);
+
+    HANDLE_ERROR(cudaMalloc(&d_data, bytes));
+    HANDLE_ERROR(cudaMemcpy(d_data, h_data, bytes, cudaMemcpyHostToDevice));
+
+
+    int threadsPerBlock = n; 
+    if (n > 1024) {
+        // Here you should ideally throw an error or use a Multi-block Scan logic
+        printf("Warning: Vanilla Blelloch is limited to 1024 threads per block!\n");
+        threadsPerBlock = 1024;
+    }
+
+    blellochKernel<T><<<1, threadsPerBlock>>>(d_data);
+
+    HANDLE_ERROR(cudaGetLastError());
+    HANDLE_ERROR(cudaDeviceSynchronize());
+
+    HANDLE_ERROR(cudaMemcpy(h_data, d_data, bytes, cudaMemcpyDeviceToHost));
+    HANDLE_ERROR(cudaFree(d_data));
+}
+template void gpuVanillaPrefixSum<int>(int* h_data, int n);
+template void gpuVanillaPrefixSum<float>(float* h_data, int n);
+template void gpuVanillaPrefixSum<unsigned int>(unsigned int* h_data, int n);

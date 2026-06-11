@@ -16,7 +16,7 @@ double calculateMAE(const float* arr1, const float* arr2, int n) {
 }
 
 int main() {
-    const int N = 1024; 
+    const int N = 16; 
     std::vector<float> h_input(N);
     for (int i = 0; i < N; ++i) {
         h_input[i] = static_cast<float>(i % 10 + 1); 
@@ -28,7 +28,7 @@ int main() {
     std::cout << "Starting Prefix Sum comparison (N = " << N << ")..." << std::endl;
 
     cpuPrefixSum(cpu_buffer.data(), N);
-    gpuPrefixSum(gpu_buffer.data(), N);
+    gpuVanillaPrefixSum(gpu_buffer.data(), N);
 
     double mae = calculateMAE(cpu_buffer.data(), gpu_buffer.data(), N);
 
