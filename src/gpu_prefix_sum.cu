@@ -120,32 +120,46 @@ __global__ void vannilaKernel(T *ac) {
 
 
 
-
-template <typename T>
-void gpuVanillaPrefixSum(T* h_data, int n) {
+template <typename T, typename KernelFunc>
+void gpuScanRunner(KernelFunc kernel, T* h_data, int n, size_t shared_mem_bytes) {
     T* d_data;
     const size_t n_bytes = n * sizeof(T);
-    const size_t shared_memory_size = n_bytes;
 
+    // 1. Allocation
     HANDLE_ERROR(cudaMalloc(&d_data, n_bytes));
+
+    // 2. Data Transfer (Host to Device)
     HANDLE_ERROR(cudaMemcpy(d_data, h_data, n_bytes, cudaMemcpyHostToDevice));
 
-
+    // 3. Launch Configuration
+    // For single-block algorithms (like Vanilla Blelloch)
     int threadsPerBlock = n; 
     if (n > 1024) {
-        // Here you should ideally throw an error or use a Multi-block Scan logic
-        printf("Warning: Vanilla Blelloch is limited to 1024 threads per block!\n");
+        printf("Warning: Kernel limited to 1024 threads per block!\n");
         threadsPerBlock = 1024;
     }
 
-    vannilaKernel<T><<<1, threadsPerBlock, shared_memory_size>>>(d_data);
+    // 4. Kernel Launch
+    // We pass the kernel function and the dynamic shared memory size
+    kernel<<<1, threadsPerBlock, shared_mem_bytes>>>(d_data);
 
+    // 5. Error Check and Sync
     HANDLE_ERROR(cudaGetLastError());
     HANDLE_ERROR(cudaDeviceSynchronize());
 
+    // 6. Data Transfer (Device to Host)
     HANDLE_ERROR(cudaMemcpy(h_data, d_data, n_bytes, cudaMemcpyDeviceToHost));
+
+    // 7. Cleanup
     HANDLE_ERROR(cudaFree(d_data));
 }
+
+
+template <typename T>
+void gpuVanillaPrefixSum(T* h_data, int n) {
+    gpuScanRunner(vannilaKernel<T>, h_data, n, n * sizeof(T));
+}
+
 template void gpuVanillaPrefixSum<int>(int* h_data, int n);
 template void gpuVanillaPrefixSum<float>(float* h_data, int n);
 template void gpuVanillaPrefixSum<unsigned int>(unsigned int* h_data, int n);
@@ -187,31 +201,9 @@ __global__ void bitReverseScanKernel(T ac[]){
         ac[idx-1] = sdata[threadIdx.x];
 }
 
-
 template <typename T>
 void gpuBitReversePrefixSum(T* h_data, int n) {
-    T* d_data;
-    const size_t n_bytes = n * sizeof(T);
-    const size_t shared_memory_size = n_bytes;
-
-    HANDLE_ERROR(cudaMalloc(&d_data, n_bytes));
-    HANDLE_ERROR(cudaMemcpy(d_data, h_data, n_bytes, cudaMemcpyHostToDevice));
-
-
-    int threadsPerBlock = n; 
-    if (n > 1024) {
-        // Here you should ideally throw an error or use a Multi-block Scan logic
-        printf("Warning: Vanilla Blelloch is limited to 1024 threads per block!\n");
-        threadsPerBlock = 1024;
-    }
-
-    bitReverseScanKernel<T><<<1, threadsPerBlock, shared_memory_size>>>(d_data);
-
-    HANDLE_ERROR(cudaGetLastError());
-    HANDLE_ERROR(cudaDeviceSynchronize());
-
-    HANDLE_ERROR(cudaMemcpy(h_data, d_data, n_bytes, cudaMemcpyDeviceToHost));
-    HANDLE_ERROR(cudaFree(d_data));
+    gpuScanRunner(bitReverseScanKernel<T>, h_data, n, n * sizeof(T));
 }
 template void gpuBitReversePrefixSum<int>(int* h_data, int n);
 template void gpuBitReversePrefixSum<float>(float* h_data, int n);
