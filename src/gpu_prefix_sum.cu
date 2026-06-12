@@ -195,24 +195,23 @@ template void gpuVanillaPrefixSum<float>(float[], int, float*);
 template void gpuVanillaPrefixSum<unsigned int>(unsigned int[], int, float*);
 
 
+
 template <typename T>
 __global__ void bitReverseScanKernel(T ac[]){
     extern __shared__ unsigned char shared_memory[]; // allocated on invocation
     T* sdata = reinterpret_cast<T*>(shared_memory);
-    
-    T lastElement; 
+    T lastElement;
     const int n = blockDim.x;
-    const int idx = blockIdx.x * n + (n - 1 - bit_reverse_pow2(threadIdx.x, n));
-
-    sdata[threadIdx.x] = ac[idx]; // global memory coalescing
+    const int idx = n - 1 - bit_reverse_pow2(threadIdx.x, n);
+    const int offsetIdx = blockIdx.x * n;
+    sdata[idx] = ac[offsetIdx + threadIdx.x]; 
     for (unsigned int s = n >> 1; s > 0; s >>= 1) {
         __syncthreads();
         if (threadIdx.x < s) {
             sdata[threadIdx.x] += sdata[threadIdx.x + s];
         }
     }
-    __syncthreads();
-    if (threadIdx.x == n - 1) {  
+    if (threadIdx.x == 0) {
         lastElement = sdata[0];
         sdata[0] = 0;  // clear the last element
     }
@@ -225,11 +224,12 @@ __global__ void bitReverseScanKernel(T ac[]){
         }
     }
     __syncthreads();
-    if(threadIdx.x == n - 1)
-        ac[idx + n - 1] = lastElement;
+    if(threadIdx.x == 0)
+        ac[offsetIdx + n - 1] = lastElement;
     else 
-        ac[idx-1] = sdata[threadIdx.x];
+        ac[offsetIdx + threadIdx.x - 1] = sdata[idx];
 }
+
 
 template <typename T>
 void gpuBitReversePrefixSum(T* h_data, int n, float* kernel_time_ms) {
