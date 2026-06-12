@@ -308,7 +308,7 @@ __global__ void bitReverseShuffleKernel(T ac[]){
     const int offsetIdx = blockIdx.x * n;
     sdata[idx] = ac[offsetIdx + tid];
     unsigned int s;
-    T tmp;
+    T v, remote, r_up, r_down;
     for (s = n >> 1; s >= 32; s >>= 1) {
         __syncthreads();
         if (tid < s) {
@@ -316,29 +316,49 @@ __global__ void bitReverseShuffleKernel(T ac[]){
         }
     }
     if (tid < 32) {
-        // Cache in register
-        if (tid < 16) sdata[tid] += sdata[tid + 16]; __syncwarp();
-        if (tid < 8)  sdata[tid] += sdata[tid + 8];  __syncwarp();
-        if (tid < 4)  sdata[tid] += sdata[tid + 4];  __syncwarp();
-        if (tid < 2)  sdata[tid] += sdata[tid + 2];  __syncwarp();
-        if (tid < 1)  sdata[tid] += sdata[tid + 1];  __syncwarp();
-    }
-    if (tid == 0) {
-        lastElement = sdata[0];
-        sdata[0] = 0;  // clear the last element
-    }
-    if (tid < 32) {
-        if (tid < 1) { tmp = sdata[tid + 1]; sdata[tid + 1] = sdata[tid]; sdata[tid] += tmp; } __syncwarp();
-        if (tid < 2) { tmp = sdata[tid + 2]; sdata[tid + 2] = sdata[tid]; sdata[tid] += tmp; } __syncwarp();
-        if (tid < 4) { tmp = sdata[tid + 4]; sdata[tid + 4] = sdata[tid]; sdata[tid] += tmp; } __syncwarp();
-        if (tid < 8) { tmp = sdata[tid + 8]; sdata[tid + 8] = sdata[tid]; sdata[tid] += tmp; } __syncwarp();
-        if (tid < 16) { tmp = sdata[tid + 16]; sdata[tid + 16] = sdata[tid]; sdata[tid] += tmp; } __syncwarp();
+        v = sdata[tid];
+
+        // Warp Upsweep
+        remote = __shfl_down_sync(0xffffffff, v, 16); if (tid < 16) v += remote;
+        remote = __shfl_down_sync(0xffffffff, v, 8);  if (tid < 8)  v += remote;
+        remote = __shfl_down_sync(0xffffffff, v, 4);  if (tid < 4)  v += remote;
+        remote = __shfl_down_sync(0xffffffff, v, 2);  if (tid < 2)  v += remote;
+        remote = __shfl_down_sync(0xffffffff, v, 1);  if (tid < 1)  v += remote;
+
+        // Clear root and save total sum
+        if (tid == 0) {
+            lastElement = v;
+            v = 0;
+        }
+
+        // Warp Downsweep (Manual Unroll)
+        // Stride 1
+        r_up = __shfl_up_sync(0xffffffff, v, 1); r_down = __shfl_down_sync(0xffffffff, v, 1);
+        if (tid < 1) v += r_down; else if (tid < 2) v = r_up;
+
+        // Stride 2
+        r_up = __shfl_up_sync(0xffffffff, v, 2); r_down = __shfl_down_sync(0xffffffff, v, 2);
+        if (tid < 2) v += r_down; else if (tid < 4) v = r_up;
+
+        // Stride 4
+        r_up = __shfl_up_sync(0xffffffff, v, 4); r_down = __shfl_down_sync(0xffffffff, v, 4);
+        if (tid < 4) v += r_down; else if (tid < 8) v = r_up;
+
+        // Stride 8
+        r_up = __shfl_up_sync(0xffffffff, v, 8); r_down = __shfl_down_sync(0xffffffff, v, 8);
+        if (tid < 8) v += r_down; else if (tid < 16) v = r_up;
+
+        // Stride 16
+        r_up = __shfl_up_sync(0xffffffff, v, 16); r_down = __shfl_down_sync(0xffffffff, v, 16);
+        if (tid < 16) v += r_down; else if (tid < 32) v = r_up;
+
+        sdata[tid] = v;
     }
     for (s = 32; s < n; s <<= 1) {
         if (tid < s) {
-            tmp = sdata[tid + s];
+            v = sdata[tid + s];
             sdata[tid + s] = sdata[tid];
-            sdata[tid] += tmp;
+            sdata[tid] += v;
         }
         __syncthreads();
     }
