@@ -1,71 +1,90 @@
 #include "utest/utest.h"
 #include "prefix_sum.h"
 #include <vector>
-#include <numeric> // for std::iota and std::fill
+#include <cstdio>
+
 
 /**
- * Test 1: Compare Consistency (CPU vs Vanilla GPU vs Bit-Reverse GPU)
- * Using float data with random-like values.
+ * Structure to hold algorithm metadata
  */
-UTEST(PrefixSum, ComparisonTest) {
-    const int N = 1024; // Single block limit
+template <typename T>
+struct ScanAlgorithm {
+    const char* name;
+    void (*func)(T*, int);
+};
+
+/**
+ * Fixture to manage the list of algorithms
+ */
+struct PrefixSumFixture {
+    static inline ScanAlgorithm<int> int_algos[] = {
+        {"Vanilla-Blelloch-Int", gpuVanillaPrefixSum<int>},
+        {"BitReverse-Blelloch-Int", gpuBitReversePrefixSum<int>}
+    };
+
+    static inline ScanAlgorithm<float> float_algos[] = {
+        {"Vanilla-Blelloch-Float", gpuVanillaPrefixSum<float>},
+        {"BitReverse-Blelloch-Float", gpuBitReversePrefixSum<float>}
+    };
+    int current_index;
+};
+
+#define NUM_INT_ALGOS (sizeof(PrefixSumFixture::int_algos) / sizeof(ScanAlgorithm<int>))
+#define NUM_FLOAT_ALGOS (sizeof(PrefixSumFixture::float_algos) / sizeof(ScanAlgorithm<float>))
+
+UTEST_I_SETUP(PrefixSumFixture) { 
+    utest_fixture->current_index = (int)utest_index;
+}
+UTEST_I_TEARDOWN(PrefixSumFixture) { (void)utest_fixture; (void)utest_index; }
+
+/**
+ * TEST 1: Integer All-Ones & Consistency Test (Inclusive)
+ * - Verifies that [1, 1, 1, ...] results in [1, 2, 3, ...] (Index + 1)
+ */
+UTEST_I(PrefixSumFixture, IntegerConsistencyAndInclusiveIndexTest, NUM_INT_ALGOS) {
+    const int N = 1024;
+    auto& algo = PrefixSumFixture::int_algos[utest_fixture->current_index];
+
+    printf("\n[ INFO ] Testing Inclusive Algo: %s\n", algo.name);
+
+    std::vector<int> h_input(N, 1); 
+    std::vector<int> cpu_ref = h_input;
+    std::vector<int> gpu_res = h_input;
+
+    // Run CPU and GPU versions
+    cpuPrefixSum(cpu_ref.data(), N);
+    algo.func(gpu_res.data(), N);
+
+    for (int i = 0; i < N; ++i) {
+        // Requirement for All-Ones Inclusive: output[i] == i + 1
+        EXPECT_EQ(i + 1, gpu_res[i]);
+        
+        // Match CPU Reference exactly
+        EXPECT_EQ(cpu_ref[i], gpu_res[i]);
+    }
+}
+
+/**
+ * TEST 2: Floating Point Random Data Test (Inclusive)
+ */
+UTEST_I(PrefixSumFixture, FloatInclusiveConsistencyTest, NUM_FLOAT_ALGOS) {
+    const int N = 1024;
+    auto& algo = PrefixSumFixture::float_algos[utest_fixture->current_index];
+
+    printf("\n[ INFO ] Testing Inclusive Algo: %s\n", algo.name);
+
     std::vector<float> h_input(N);
-    
-    // Fill with some data
     for (int i = 0; i < N; ++i) {
-        h_input[i] = static_cast<float>(i % 10);
+        h_input[i] = static_cast<float>(i % 11) * 0.1f;
     }
 
-    std::vector<float> cpu_res = h_input;
-    std::vector<float> vanilla_res = h_input;
-    std::vector<float> bitrev_res = h_input;
+    std::vector<float> cpu_ref = h_input;
+    std::vector<float> gpu_res = h_input;
 
-    // 1. Run CPU
-    cpuPrefixSum(cpu_res.data(), N);
+    cpuPrefixSum(cpu_ref.data(), N);
+    algo.func(gpu_res.data(), N);
 
-    // 2. Run Vanilla GPU
-    gpuVanillaPrefixSum(vanilla_res.data(), N);
-
-    // 3. Run Bit-Reverse GPU
-    gpuBitReversePrefixSum(bitrev_res.data(), N);
-
-    // Compare bit-reverse result with CPU and Vanilla
     for (int i = 0; i < N; ++i) {
-        // Use EXPECT_NEAR for floats due to precision
-        EXPECT_NEAR(cpu_res[i], vanilla_res[i], 1e-4f);
-        EXPECT_NEAR(cpu_res[i], bitrev_res[i], 1e-4f);
-    }
-}
-
-/**
- * Test 2: The "All Ones" Test for Integer Indices
- * If input is [1, 1, 1, ...], the Exclusive Scan output should be [0, 1, 2, ...]
- */
-UTEST(PrefixSum, AllOnesIndexTest) {
-    const int N = 512; 
-    std::vector<int> h_data(N, 1); // Fill with all 1s
-
-    // Run the GPU scan
-    gpuVanillaPrefixSum(h_data.data(), N);
-
-    // Verify indices
-    for (int i = 0; i < N; ++i) {
-        // For Exclusive Scan: result[i] should be i
-        // (i.e. 0, 1, 2, 3, ...)
-        EXPECT_EQ(i+1, h_data[i]);
-    }
-}
-
-/**
- * Test 3: Bit-Reverse "All Ones" with Unsigned Int
- */
-UTEST(PrefixSum, BitReverseAllOnesTest) {
-    const int N = 256;
-    std::vector<unsigned int> h_data(N, 1u);
-
-    gpuBitReversePrefixSum(h_data.data(), N);
-
-    for (unsigned int i = 0; i < N; ++i) {
-        EXPECT_EQ(i+1, h_data[i]);
+        EXPECT_NEAR(cpu_ref[i], gpu_res[i], 1e-4f);
     }
 }
