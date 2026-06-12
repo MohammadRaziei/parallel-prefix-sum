@@ -258,7 +258,7 @@ __global__ void bitReverseWarpKernel(T ac[]){
         }
     }
     for (; s > 0; s >>= 1) {
-        __syncwarp(); 
+        __syncwarp();
         if (threadIdx.x < s) {
             sdata[threadIdx.x] += sdata[threadIdx.x + s];
         }
@@ -268,22 +268,21 @@ __global__ void bitReverseWarpKernel(T ac[]){
         sdata[0] = 0;  // clear the last element
     }
     for (s = 1; s < 32; s <<= 1) {
-        __syncwarp();
         if (threadIdx.x < s) {
             tmp = sdata[threadIdx.x + s];
             sdata[threadIdx.x + s] = sdata[threadIdx.x];
             sdata[threadIdx.x] += tmp;
         }
+        __syncwarp();
     }
     for (; s < n; s <<= 1) {
-        __syncthreads();
         if (threadIdx.x < s) {
             tmp = sdata[threadIdx.x + s];
             sdata[threadIdx.x + s] = sdata[threadIdx.x];
             sdata[threadIdx.x] += tmp;
         }
+        __syncthreads();
     }
-    __syncthreads();
     if(threadIdx.x == 0)
         ac[offsetIdx + n - 1] = lastElement;
     else 

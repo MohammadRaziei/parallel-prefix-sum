@@ -19,14 +19,14 @@ struct ScanAlgorithm {
 struct PrefixSumFixture {
     static inline ScanAlgorithm<int> int_algos[] = {
         {"Vanilla-Blelloch-Int", gpuVanillaPrefixSum<int>},
-        {"BitReverse-Blelloch-Int", gpuBitReversePrefixSumSimple<int>},
+        {"BitReverseSimple-Blelloch-Int", gpuBitReversePrefixSumSimple<int>},
         {"BitReverseWarp-Blelloch-Int", gpuBitReversePrefixSumWarp<int>}
     };
 
     static inline ScanAlgorithm<float> float_algos[] = {
         {"Vanilla-Blelloch-Float", gpuVanillaPrefixSum<float>},
-        {"BitReverse-Blelloch-Float", gpuBitReversePrefixSumSimple<float>}, 
-        {"BitReverseWarp-Blelloch-Int", gpuBitReversePrefixSumWarp<float>}
+        {"BitReverseSimple-Blelloch-Float", gpuBitReversePrefixSumSimple<float>}, 
+        {"BitReverseWarp-Blelloch-Float", gpuBitReversePrefixSumWarp<float>}
     };
     int current_index;
 };
@@ -58,7 +58,7 @@ UTEST_I(PrefixSumFixture, IntegerConsistencyAndInclusiveIndexTest, NUM_INT_ALGOS
     float kernel_time_ms;
     algo.func(gpu_res.data(), N, &kernel_time_ms);
 
-    UTEST_PRINTF("[   INFO   ] Kernel Time : %.4gms\n", kernel_time_ms);
+    UTEST_PRINTF("[   INFO   ] %s -> Kernel Time : %.4gms\n", algo.name, kernel_time_ms);
 
     for (int i = 0; i < N; ++i) {
         // Requirement for All-Ones Inclusive: output[i] == i + 1
@@ -90,7 +90,7 @@ UTEST_I(PrefixSumFixture, FloatInclusiveConsistencyTest, NUM_FLOAT_ALGOS) {
     float kernel_time_ms;
     algo.func(gpu_res.data(), N, &kernel_time_ms);
 
-    UTEST_PRINTF("[   INFO   ] Kernel Time : %.4gms\n", kernel_time_ms);
+    UTEST_PRINTF("[   INFO   ] %s -> Kernel Time : %.4gms\n", algo.name, kernel_time_ms);
 
     for (int i = 0; i < N; ++i) {
         EXPECT_NEAR(cpu_ref[i], gpu_res[i], 1e-4f);
