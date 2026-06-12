@@ -246,49 +246,50 @@ __global__ void bitReverseWarpKernel(T ac[]){
     T* sdata = reinterpret_cast<T*>(shared_memory);
     T lastElement;
     const int n = blockDim.x;
-    const int idx = n - 1 - bit_reverse_pow2(threadIdx.x, n);
+    const int tid = threadIdx.x;
+    const int idx = n - 1 - bit_reverse_pow2(tid, n);
     const int offsetIdx = blockIdx.x * n;
-    sdata[idx] = ac[offsetIdx + threadIdx.x]; 
+    sdata[idx] = ac[offsetIdx + tid];
     unsigned int s;
     T tmp;
     for (s = n >> 1; s >= 32; s >>= 1) {
         __syncthreads();
-        if (threadIdx.x < s) {
-            sdata[threadIdx.x] += sdata[threadIdx.x + s];
+        if (tid < s) {
+            sdata[tid] += sdata[tid + s];
         }
     }
-    for (; s > 0; s >>= 1) {
-        __syncwarp();
-        if (threadIdx.x < s) {
-            sdata[threadIdx.x] += sdata[threadIdx.x + s];
-        }
+    if (tid < 32) {
+        // Cache in register
+        if (tid < 16) sdata[tid] += sdata[tid + 16]; __syncwarp();
+        if (tid < 8)  sdata[tid] += sdata[tid + 8];  __syncwarp();
+        if (tid < 4)  sdata[tid] += sdata[tid + 4];  __syncwarp();
+        if (tid < 2)  sdata[tid] += sdata[tid + 2];  __syncwarp();
+        if (tid < 1)  sdata[tid] += sdata[tid + 1];  __syncwarp();
     }
-    if (threadIdx.x == 0) {
+    if (tid == 0) {
         lastElement = sdata[0];
         sdata[0] = 0;  // clear the last element
     }
-    for (s = 1; s < 32; s <<= 1) {
-        if (threadIdx.x < s) {
-            tmp = sdata[threadIdx.x + s];
-            sdata[threadIdx.x + s] = sdata[threadIdx.x];
-            sdata[threadIdx.x] += tmp;
-        }
-        __syncwarp();
+    if (tid < 32) {
+        if (tid < 1) { tmp = sdata[tid + 1]; sdata[tid + 1] = sdata[tid]; sdata[tid] += tmp; } __syncwarp();
+        if (tid < 2) { tmp = sdata[tid + 2]; sdata[tid + 2] = sdata[tid]; sdata[tid] += tmp; } __syncwarp();
+        if (tid < 4) { tmp = sdata[tid + 4]; sdata[tid + 4] = sdata[tid]; sdata[tid] += tmp; } __syncwarp();
+        if (tid < 8) { tmp = sdata[tid + 8]; sdata[tid + 8] = sdata[tid]; sdata[tid] += tmp; } __syncwarp();
+        if (tid < 16) { tmp = sdata[tid + 16]; sdata[tid + 16] = sdata[tid]; sdata[tid] += tmp; } __syncwarp();
     }
-    for (; s < n; s <<= 1) {
-        if (threadIdx.x < s) {
-            tmp = sdata[threadIdx.x + s];
-            sdata[threadIdx.x + s] = sdata[threadIdx.x];
-            sdata[threadIdx.x] += tmp;
+    for (s = 32; s < n; s <<= 1) {
+        if (tid < s) {
+            tmp = sdata[tid + s];
+            sdata[tid + s] = sdata[tid];
+            sdata[tid] += tmp;
         }
         __syncthreads();
     }
-    if(threadIdx.x == 0)
+    if(tid == 0)
         ac[offsetIdx + n - 1] = lastElement;
     else 
-        ac[offsetIdx + threadIdx.x - 1] = sdata[idx];
+        ac[offsetIdx + tid - 1] = sdata[idx];
 }
-
 
 template <typename T>
 void gpuBitReversePrefixSumWarp(T* h_data, int n, float* kernel_time_ms) {
