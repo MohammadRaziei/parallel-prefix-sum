@@ -45,7 +45,7 @@ UTEST_I(PrefixSumFixture, IntegerConsistencyAndInclusiveIndexTest, NUM_INT_ALGOS
     const int N = 1024;
     auto& algo = PrefixSumFixture::int_algos[utest_fixture->current_index];
 
-    printf("[   INFO   ] Testing Inclusive Algo: %s\n", algo.name);
+    UTEST_PRINTF("[   INFO   ] Testing Inclusive Algo: %s\n", algo.name);
 
     std::vector<int> h_input(N, 1); 
     std::vector<int> cpu_ref = h_input;
@@ -71,7 +71,7 @@ UTEST_I(PrefixSumFixture, FloatInclusiveConsistencyTest, NUM_FLOAT_ALGOS) {
     const int N = 1024;
     auto& algo = PrefixSumFixture::float_algos[utest_fixture->current_index];
 
-    printf("[   INFO   ] Testing Inclusive Algo: %s\n", algo.name);
+    UTEST_PRINTF("[   INFO   ] Testing Inclusive Algo: %s\n", algo.name);
 
     std::vector<float> h_input(N);
     for (int i = 0; i < N; ++i) {
