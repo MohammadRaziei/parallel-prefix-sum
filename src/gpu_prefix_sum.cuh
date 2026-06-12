@@ -8,5 +8,6 @@ void gpuBitReversePow2(unsigned int* h_out, const unsigned int* h_in, int n, int
 template <typename T> void gpuVanillaPrefixSum(T h_data[], int n, float* kernel_time_ms = nullptr);
 template <typename T> void gpuBitReversePrefixSumSimple(T h_data[], int n, float* kernel_time_ms = nullptr);
 template <typename T> void gpuBitReversePrefixSumWarp(T h_data[], int n, float* kernel_time_ms = nullptr);
+template <typename T> void gpuBitReversePrefixSumShuffle(T h_data[], int n, float* kernel_time_ms = nullptr);
 
 #endif

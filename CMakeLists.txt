@@ -27,5 +27,7 @@ target_link_libraries(prefix_sum_example PRIVATE prefix_sum)
 set_target_properties(prefix_sum_example PROPERTIES LINKER_LANGUAGE CUDA)
 
 
+add_subdirectory(benchmarks)
+
 enable_testing()
 add_subdirectory(tests)

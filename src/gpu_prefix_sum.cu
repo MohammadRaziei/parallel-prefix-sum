@@ -146,9 +146,9 @@ __global__ void vannilaKernel(T *ac) {
 
 
 template <typename T, typename KernelFunc>
-void gpuScanRunner(KernelFunc kernel, T h_data[], int n, size_t shared_mem_bytes, float* kernel_time_ms = nullptr) {
+void gpuScanRunner(KernelFunc kernel, T h_data[], int size, float shared_mem_vs_block_size, float* kernel_time_ms = nullptr) {
     T* d_data;
-    const size_t n_bytes = n * sizeof(T);
+    const size_t n_bytes = size * sizeof(T);
 
     // 1. Allocation
     HANDLE_ERROR(cudaMalloc(&d_data, n_bytes));
@@ -158,16 +158,13 @@ void gpuScanRunner(KernelFunc kernel, T h_data[], int n, size_t shared_mem_bytes
 
     // 3. Launch Configuration
     // For single-block algorithms (like Vanilla Blelloch)
-    int threadsPerBlock = n; 
-    if (n > 1024) {
-        printf("Warning: Kernel limited to 1024 threads per block!\n");
-        threadsPerBlock = 1024;
-    }
+    const int blockSize = (size < 1024) ? ((size + 31) / 32) * 32 : 1024;
+    const int gridSize = (size + blockSize - 1) / blockSize;
 
     // 4. Kernel Launch
     // We pass the kernel function and the dynamic shared memory size
     if (kernel_time_ms) gpuTimer.start();
-    kernel<<<1, threadsPerBlock, shared_mem_bytes>>>(d_data);
+    kernel<<<gridSize, blockSize, static_cast<int>(shared_mem_vs_block_size * blockSize * sizeof(T))>>>(d_data);
     if (kernel_time_ms) {
         gpuTimer.stop();
         *kernel_time_ms = gpuTimer.elapsedMs();
@@ -187,7 +184,7 @@ void gpuScanRunner(KernelFunc kernel, T h_data[], int n, size_t shared_mem_bytes
 
 template <typename T>
 void gpuVanillaPrefixSum(T h_data[], int n, float* kernel_time_ms) {
-    gpuScanRunner(vannilaKernel<T>, h_data, n, n * sizeof(T), kernel_time_ms);
+    gpuScanRunner(vannilaKernel<T>, h_data, n, 1, kernel_time_ms);
 }
 
 template void gpuVanillaPrefixSum<int>(int[], int, float*);
@@ -233,7 +230,7 @@ __global__ void bitReverseSimpleKernel(T ac[]){
 
 template <typename T>
 void gpuBitReversePrefixSumSimple(T* h_data, int n, float* kernel_time_ms) {
-    gpuScanRunner(bitReverseSimpleKernel<T>, h_data, n, n * sizeof(T), kernel_time_ms);
+    gpuScanRunner(bitReverseSimpleKernel<T>, h_data, n, 1, kernel_time_ms);
 }
 template void gpuBitReversePrefixSumSimple<int>(int[], int, float*);
 template void gpuBitReversePrefixSumSimple<float>(float[], int, float*);
@@ -293,9 +290,69 @@ __global__ void bitReverseWarpKernel(T ac[]){
 
 template <typename T>
 void gpuBitReversePrefixSumWarp(T* h_data, int n, float* kernel_time_ms) {
-    gpuScanRunner(bitReverseWarpKernel<T>, h_data, n, n * sizeof(T), kernel_time_ms);
+    gpuScanRunner(bitReverseWarpKernel<T>, h_data, n, 1, kernel_time_ms);
 }
 template void gpuBitReversePrefixSumWarp<int>(int[], int, float*);
 template void gpuBitReversePrefixSumWarp<float>(float[], int, float*);
 template void gpuBitReversePrefixSumWarp<unsigned int>(unsigned int[], int, float*);
+
+
+template <typename T>
+__global__ void bitReverseShuffleKernel(T ac[]){
+    extern __shared__ unsigned char shared_memory[]; // allocated on invocation
+    T* sdata = reinterpret_cast<T*>(shared_memory);
+    T lastElement;
+    const int n = blockDim.x;
+    const int tid = threadIdx.x;
+    const int idx = n - 1 - bit_reverse_pow2(tid, n);
+    const int offsetIdx = blockIdx.x * n;
+    sdata[idx] = ac[offsetIdx + tid];
+    unsigned int s;
+    T tmp;
+    for (s = n >> 1; s >= 32; s >>= 1) {
+        __syncthreads();
+        if (tid < s) {
+            sdata[tid] += sdata[tid + s];
+        }
+    }
+    if (tid < 32) {
+        // Cache in register
+        if (tid < 16) sdata[tid] += sdata[tid + 16]; __syncwarp();
+        if (tid < 8)  sdata[tid] += sdata[tid + 8];  __syncwarp();
+        if (tid < 4)  sdata[tid] += sdata[tid + 4];  __syncwarp();
+        if (tid < 2)  sdata[tid] += sdata[tid + 2];  __syncwarp();
+        if (tid < 1)  sdata[tid] += sdata[tid + 1];  __syncwarp();
+    }
+    if (tid == 0) {
+        lastElement = sdata[0];
+        sdata[0] = 0;  // clear the last element
+    }
+    if (tid < 32) {
+        if (tid < 1) { tmp = sdata[tid + 1]; sdata[tid + 1] = sdata[tid]; sdata[tid] += tmp; } __syncwarp();
+        if (tid < 2) { tmp = sdata[tid + 2]; sdata[tid + 2] = sdata[tid]; sdata[tid] += tmp; } __syncwarp();
+        if (tid < 4) { tmp = sdata[tid + 4]; sdata[tid + 4] = sdata[tid]; sdata[tid] += tmp; } __syncwarp();
+        if (tid < 8) { tmp = sdata[tid + 8]; sdata[tid + 8] = sdata[tid]; sdata[tid] += tmp; } __syncwarp();
+        if (tid < 16) { tmp = sdata[tid + 16]; sdata[tid + 16] = sdata[tid]; sdata[tid] += tmp; } __syncwarp();
+    }
+    for (s = 32; s < n; s <<= 1) {
+        if (tid < s) {
+            tmp = sdata[tid + s];
+            sdata[tid + s] = sdata[tid];
+            sdata[tid] += tmp;
+        }
+        __syncthreads();
+    }
+    if(tid == 0)
+        ac[offsetIdx + n - 1] = lastElement;
+    else 
+        ac[offsetIdx + tid - 1] = sdata[idx];
+}
+
+template <typename T>
+void gpuBitReversePrefixSumShuffle(T* h_data, int n, float* kernel_time_ms) {
+    gpuScanRunner(bitReverseShuffleKernel<T>, h_data, n, 1, kernel_time_ms);
+}
+template void gpuBitReversePrefixSumShuffle<int>(int[], int, float*);
+template void gpuBitReversePrefixSumShuffle<float>(float[], int, float*);
+template void gpuBitReversePrefixSumShuffle<unsigned int>(unsigned int[], int, float*);
 
