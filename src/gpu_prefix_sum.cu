@@ -12,6 +12,31 @@ static void handleError(cudaError_t err, const char *file, int line) {
 }
 #define HANDLE_ERROR( err ) (handleError(err, __FILE__, __LINE__))
 
+
+struct GpuTimer{
+	cudaEvent_t start_, stop_;
+	GpuTimer(){
+		cudaEventCreate(&start_);
+		cudaEventCreate(&stop_);
+	}
+	~GpuTimer(){
+		cudaEventDestroy(start_);
+		cudaEventDestroy(stop_);
+	}
+	void start(){
+		cudaEventRecord(start_, 0);
+	}
+	void stop(){
+		cudaEventRecord(stop_, 0);
+	}
+	float elapsedMs(){
+		float elapsed;
+		cudaEventSynchronize(stop_);
+		cudaEventElapsedTime(&elapsed, start_, stop_);
+		return elapsed;
+	}
+} gpuTimer;
+
 __device__ __forceinline__ unsigned int bit_reverse(unsigned int x, int m_bits) {
     return __brev(x) >> (32 - m_bits);
 }
@@ -121,7 +146,7 @@ __global__ void vannilaKernel(T *ac) {
 
 
 template <typename T, typename KernelFunc>
-void gpuScanRunner(KernelFunc kernel, T* h_data, int n, size_t shared_mem_bytes) {
+void gpuScanRunner(KernelFunc kernel, T h_data[], int n, size_t shared_mem_bytes, float* kernel_time_ms = nullptr) {
     T* d_data;
     const size_t n_bytes = n * sizeof(T);
 
@@ -141,7 +166,12 @@ void gpuScanRunner(KernelFunc kernel, T* h_data, int n, size_t shared_mem_bytes)
 
     // 4. Kernel Launch
     // We pass the kernel function and the dynamic shared memory size
+    if (kernel_time_ms) gpuTimer.start();
     kernel<<<1, threadsPerBlock, shared_mem_bytes>>>(d_data);
+    if (kernel_time_ms) {
+        gpuTimer.stop();
+        *kernel_time_ms = gpuTimer.elapsedMs();
+    }
 
     // 5. Error Check and Sync
     HANDLE_ERROR(cudaGetLastError());
@@ -156,13 +186,13 @@ void gpuScanRunner(KernelFunc kernel, T* h_data, int n, size_t shared_mem_bytes)
 
 
 template <typename T>
-void gpuVanillaPrefixSum(T* h_data, int n) {
-    gpuScanRunner(vannilaKernel<T>, h_data, n, n * sizeof(T));
+void gpuVanillaPrefixSum(T h_data[], int n, float* kernel_time_ms) {
+    gpuScanRunner(vannilaKernel<T>, h_data, n, n * sizeof(T), kernel_time_ms);
 }
 
-template void gpuVanillaPrefixSum<int>(int* h_data, int n);
-template void gpuVanillaPrefixSum<float>(float* h_data, int n);
-template void gpuVanillaPrefixSum<unsigned int>(unsigned int* h_data, int n);
+template void gpuVanillaPrefixSum<int>(int[], int, float*);
+template void gpuVanillaPrefixSum<float>(float[], int, float*);
+template void gpuVanillaPrefixSum<unsigned int>(unsigned int[], int, float*);
 
 
 template <typename T>
@@ -202,10 +232,10 @@ __global__ void bitReverseScanKernel(T ac[]){
 }
 
 template <typename T>
-void gpuBitReversePrefixSum(T* h_data, int n) {
-    gpuScanRunner(bitReverseScanKernel<T>, h_data, n, n * sizeof(T));
+void gpuBitReversePrefixSum(T* h_data, int n, float* kernel_time_ms) {
+    gpuScanRunner(bitReverseScanKernel<T>, h_data, n, n * sizeof(T), kernel_time_ms);
 }
-template void gpuBitReversePrefixSum<int>(int* h_data, int n);
-template void gpuBitReversePrefixSum<float>(float* h_data, int n);
-template void gpuBitReversePrefixSum<unsigned int>(unsigned int* h_data, int n);
+template void gpuBitReversePrefixSum<int>(int[], int, float*);
+template void gpuBitReversePrefixSum<float>(float[], int, float*);
+template void gpuBitReversePrefixSum<unsigned int>(unsigned int[], int, float*);
 

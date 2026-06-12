@@ -10,7 +10,7 @@
 template <typename T>
 struct ScanAlgorithm {
     const char* name;
-    void (*func)(T*, int);
+    void (*func)(T*, int, float*);
 };
 
 /**
@@ -53,7 +53,10 @@ UTEST_I(PrefixSumFixture, IntegerConsistencyAndInclusiveIndexTest, NUM_INT_ALGOS
 
     // Run CPU and GPU versions
     cpuPrefixSum(cpu_ref.data(), N);
-    algo.func(gpu_res.data(), N);
+    float kernel_time_ms;
+    algo.func(gpu_res.data(), N, &kernel_time_ms);
+
+    UTEST_PRINTF("[   INFO   ] Kernel Time : %.4gms\n", kernel_time_ms);
 
     for (int i = 0; i < N; ++i) {
         // Requirement for All-Ones Inclusive: output[i] == i + 1
@@ -82,7 +85,10 @@ UTEST_I(PrefixSumFixture, FloatInclusiveConsistencyTest, NUM_FLOAT_ALGOS) {
     std::vector<float> gpu_res = h_input;
 
     cpuPrefixSum(cpu_ref.data(), N);
-    algo.func(gpu_res.data(), N);
+    float kernel_time_ms;
+    algo.func(gpu_res.data(), N, &kernel_time_ms);
+
+    UTEST_PRINTF("[   INFO   ] Kernel Time : %.4gms\n", kernel_time_ms);
 
     for (int i = 0; i < N; ++i) {
         EXPECT_NEAR(cpu_ref[i], gpu_res[i], 1e-4f);
