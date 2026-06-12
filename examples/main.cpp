@@ -71,7 +71,7 @@ int main() {
     cpuPrefixSum(cpu_buffer.data(), N);
     printArray(cpu_buffer.data(), N);
 
-    gpuBitReversePrefixSum(gpu_buffer.data(), N);
+    gpuBitReversePrefixSumSimple(gpu_buffer.data(), N);
     printArray(gpu_buffer.data(), N);
 
 

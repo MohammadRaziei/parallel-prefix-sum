@@ -197,7 +197,7 @@ template void gpuVanillaPrefixSum<unsigned int>(unsigned int[], int, float*);
 
 
 template <typename T>
-__global__ void bitReverseScanKernel(T ac[]){
+__global__ void bitReverseSimpleKernel(T ac[]){
     extern __shared__ unsigned char shared_memory[]; // allocated on invocation
     T* sdata = reinterpret_cast<T*>(shared_memory);
     T lastElement;
@@ -232,10 +232,70 @@ __global__ void bitReverseScanKernel(T ac[]){
 
 
 template <typename T>
-void gpuBitReversePrefixSum(T* h_data, int n, float* kernel_time_ms) {
-    gpuScanRunner(bitReverseScanKernel<T>, h_data, n, n * sizeof(T), kernel_time_ms);
+void gpuBitReversePrefixSumSimple(T* h_data, int n, float* kernel_time_ms) {
+    gpuScanRunner(bitReverseSimpleKernel<T>, h_data, n, n * sizeof(T), kernel_time_ms);
 }
-template void gpuBitReversePrefixSum<int>(int[], int, float*);
-template void gpuBitReversePrefixSum<float>(float[], int, float*);
-template void gpuBitReversePrefixSum<unsigned int>(unsigned int[], int, float*);
+template void gpuBitReversePrefixSumSimple<int>(int[], int, float*);
+template void gpuBitReversePrefixSumSimple<float>(float[], int, float*);
+template void gpuBitReversePrefixSumSimple<unsigned int>(unsigned int[], int, float*);
+
+
+template <typename T>
+__global__ void bitReverseWarpKernel(T ac[]){
+    extern __shared__ unsigned char shared_memory[]; // allocated on invocation
+    T* sdata = reinterpret_cast<T*>(shared_memory);
+    T lastElement;
+    const int n = blockDim.x;
+    const int idx = n - 1 - bit_reverse_pow2(threadIdx.x, n);
+    const int offsetIdx = blockIdx.x * n;
+    sdata[idx] = ac[offsetIdx + threadIdx.x]; 
+    unsigned int s;
+    T tmp;
+    for (s = n >> 1; s >= 32; s >>= 1) {
+        __syncthreads();
+        if (threadIdx.x < s) {
+            sdata[threadIdx.x] += sdata[threadIdx.x + s];
+        }
+    }
+    for (; s > 0; s >>= 1) {
+        __syncwarp(); 
+        if (threadIdx.x < s) {
+            sdata[threadIdx.x] += sdata[threadIdx.x + s];
+        }
+    }
+    if (threadIdx.x == 0) {
+        lastElement = sdata[0];
+        sdata[0] = 0;  // clear the last element
+    }
+    for (s = 1; s < 32; s <<= 1) {
+        __syncwarp();
+        if (threadIdx.x < s) {
+            tmp = sdata[threadIdx.x + s];
+            sdata[threadIdx.x + s] = sdata[threadIdx.x];
+            sdata[threadIdx.x] += tmp;
+        }
+    }
+    for (; s < n; s <<= 1) {
+        __syncthreads();
+        if (threadIdx.x < s) {
+            tmp = sdata[threadIdx.x + s];
+            sdata[threadIdx.x + s] = sdata[threadIdx.x];
+            sdata[threadIdx.x] += tmp;
+        }
+    }
+    __syncthreads();
+    if(threadIdx.x == 0)
+        ac[offsetIdx + n - 1] = lastElement;
+    else 
+        ac[offsetIdx + threadIdx.x - 1] = sdata[idx];
+}
+
+
+template <typename T>
+void gpuBitReversePrefixSumWarp(T* h_data, int n, float* kernel_time_ms) {
+    gpuScanRunner(bitReverseWarpKernel<T>, h_data, n, n * sizeof(T), kernel_time_ms);
+}
+template void gpuBitReversePrefixSumWarp<int>(int[], int, float*);
+template void gpuBitReversePrefixSumWarp<float>(float[], int, float*);
+template void gpuBitReversePrefixSumWarp<unsigned int>(unsigned int[], int, float*);
 

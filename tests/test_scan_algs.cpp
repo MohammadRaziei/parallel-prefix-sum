@@ -19,12 +19,14 @@ struct ScanAlgorithm {
 struct PrefixSumFixture {
     static inline ScanAlgorithm<int> int_algos[] = {
         {"Vanilla-Blelloch-Int", gpuVanillaPrefixSum<int>},
-        {"BitReverse-Blelloch-Int", gpuBitReversePrefixSum<int>}
+        {"BitReverse-Blelloch-Int", gpuBitReversePrefixSumSimple<int>},
+        {"BitReverseWarp-Blelloch-Int", gpuBitReversePrefixSumWarp<int>}
     };
 
     static inline ScanAlgorithm<float> float_algos[] = {
         {"Vanilla-Blelloch-Float", gpuVanillaPrefixSum<float>},
-        {"BitReverse-Blelloch-Float", gpuBitReversePrefixSum<float>}
+        {"BitReverse-Blelloch-Float", gpuBitReversePrefixSumSimple<float>}, 
+        {"BitReverseWarp-Blelloch-Int", gpuBitReversePrefixSumWarp<float>}
     };
     int current_index;
 };
