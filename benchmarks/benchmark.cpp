@@ -25,6 +25,11 @@ int main() {
         gpuBitReversePrefixSumShuffle(h_data.data(), n, t);
     });
 
+    bench.run("Bit-Reverse Shuffle Twice", [&](float* t) {
+        gpuBitReversePrefixSumShuffleTwice(h_data.data(), n, t);
+    });
+
+
     // Output the beautiful table
     bench.print_results();
 
