@@ -16,6 +16,14 @@ int main() {
         gpuVanillaPrefixSum(h_data.data(), n, t);
     });
 
+    bench.run("Padded Vanilla Scan", total_bytes, [&](float* t) {
+        gpuPaddedVanillaPrefixSum(h_data.data(), n, t);
+    });
+
+    bench.run("Swizzled Scan", total_bytes, [&](float* t) {
+        gpuSwizzledPrefixSum(h_data.data(), n, t);
+    });
+    
     bench.run("Bit-Reverse Simple", total_bytes, [&](float* t) {
         gpuBitReversePrefixSumSimple(h_data.data(), n, t);
     });
@@ -32,6 +40,14 @@ int main() {
         gpuBitReversePrefixSumShuffleTwice(h_data.data(), n, t);
     });
 
+    bench.run("Bit-Reverse Vectorize", total_bytes, [&](float* t) {
+        gpuBitReversePrefixSumVectorize(h_data.data(), n, t);
+    });
+
+    bench.run("Bit-Reverse Swizzled", total_bytes, [&](float* t) {
+        gpuBitReverseSwizzledPrefixSum(h_data.data(), n, t);
+    });
+    
 
     // Output the beautiful table
     bench.print_results();

@@ -122,7 +122,7 @@ int main() {
     cpuPrefixSum(cpu_buffer.data(), N);
     // printArray(cpu_buffer.data(), N, -1);
 
-    gpuBitReversePrefixSumShuffleTwice(gpu_buffer.data(), N);
+    gpuBitReversePrefixSumVectorize(gpu_buffer.data(), N);
     printArray(gpu_buffer.data(), N, -1);
 
 

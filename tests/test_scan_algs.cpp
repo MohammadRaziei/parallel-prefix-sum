@@ -19,16 +19,26 @@ struct ScanAlgorithm {
 struct PrefixSumFixture {
     static inline ScanAlgorithm<int> int_algos[] = {
         {"Vanilla-Blelloch-Int", gpuVanillaPrefixSum<int>},
+        {"Swizzled-Blelloch-Int", gpuSwizzledPrefixSum<int>},
+        {"Padded-Blelloch-Int", gpuPaddedVanillaPrefixSum<int>},
         {"BitReverseSimple-Blelloch-Int", gpuBitReversePrefixSumSimple<int>},
         {"BitReverseWarp-Blelloch-Int", gpuBitReversePrefixSumWarp<int>},
-        {"BitReverseShuffle-Blelloch-Int", gpuBitReversePrefixSumShuffle<int>}
+        {"BitReverseShuffle-Blelloch-Int", gpuBitReversePrefixSumShuffle<int>},
+        {"BitReverseShuffleTwice-Blelloch-Int", gpuBitReversePrefixSumShuffleTwice<int>},
+        {"BitReverseSwizzled-Blelloch-Int", gpuBitReverseSwizzledPrefixSum<int>},
+        // {"BitReverseVectorize-Blelloch-Int", gpuBitReversePrefixSumVectorize<int>} 
     };
 
     static inline ScanAlgorithm<float> float_algos[] = {
         {"Vanilla-Blelloch-Float", gpuVanillaPrefixSum<float>},
+        {"Swizzled-Blelloch-Float", gpuSwizzledPrefixSum<float>},
+        {"Padded-Blelloch-Float", gpuPaddedVanillaPrefixSum<float>},
         {"BitReverseSimple-Blelloch-Float", gpuBitReversePrefixSumSimple<float>}, 
         {"BitReverseWarp-Blelloch-Float", gpuBitReversePrefixSumWarp<float>},
-        {"BitReverseShuffle-Blelloch-Float", gpuBitReversePrefixSumShuffle<float>}
+        {"BitReverseShuffle-Blelloch-Float", gpuBitReversePrefixSumShuffle<float>},
+        {"BitReverseShuffleTwice-Blelloch-Float", gpuBitReversePrefixSumShuffleTwice<float>}, 
+        {"BitReverseSwizzled-Blelloch-Float", gpuBitReverseSwizzledPrefixSum<float>},
+        // {"BitReverseVectorize-Blelloch-Float", gpuBitReversePrefixSumVectorize<float>} 
     };
     int current_index;
 };
