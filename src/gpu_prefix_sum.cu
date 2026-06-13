@@ -160,7 +160,7 @@ void gpuScanRunner(KernelFunc kernel, T h_data[], int size, float* kernel_time_m
     // For single-block algorithms (like Vanilla Blelloch)
     size >>= shift;
     const int blockSize = (size < 1024) ? ((size + 31) / 32) * 32 : 1024;
-    const int gridSize = ((size + blockSize - 1) / blockSize) << shift;
+    const int gridSize = ((size + blockSize - 1) / blockSize);
 
     // 4. Kernel Launch
     // We pass the kernel function and the dynamic shared memory size
@@ -384,13 +384,13 @@ __global__ void bitReverseShuffleTwiceKernel(T ac[]){
     T lastElement;
     const int n = blockDim.x << 1;
     const int tid = threadIdx.x;
-    const int idx = n - 1 - bit_reverse_pow2(tid, n);
+    const int idx = n - 1 - bit_reverse_pow2(tid, n); // always odd
     const int offsetIdx = blockIdx.x * n;
     sdata[idx] = ac[offsetIdx + tid];
     sdata[idx - 1] = ac[offsetIdx + tid + blockDim.x];
     T v, remote, r_up, r_down;
     unsigned int s;
-    for (s = n; s >= 32; s >>= 1) {
+    for (s = n >> 1; s >= 32; s >>= 1) {
         __syncthreads();
         if (tid < s) {
             sdata[tid] += sdata[tid + s];
@@ -435,7 +435,7 @@ __global__ void bitReverseShuffleTwiceKernel(T ac[]){
 
         sdata[tid] = v;
     }
-    for (s = 32; s <= n; s <<= 1) {
+    for (s = 32; s < n; s <<= 1) {
         if (tid < s) {
             v = sdata[tid + s];
             sdata[tid + s] = sdata[tid];
@@ -449,12 +449,12 @@ __global__ void bitReverseShuffleTwiceKernel(T ac[]){
     else {
         ac[offsetIdx + tid - 1] = sdata[idx];
     }
-    ac[offsetIdx + tid - 1 + blockDim.x] = sdata[idx - 1];
+    ac[offsetIdx + tid + blockDim.x - 1] = sdata[idx - 1];
 }
 
 template <typename T>
 void gpuBitReversePrefixSumShuffleTwice(T* h_data, int n, float* kernel_time_ms) {
-    gpuScanRunner(bitReverseShuffleKernel<T>, h_data, n, kernel_time_ms, 1, 2.f);
+    gpuScanRunner(bitReverseShuffleTwiceKernel<T>, h_data, n, kernel_time_ms, 1, 2.f);
 }
 template void gpuBitReversePrefixSumShuffleTwice<int>(int[], int, float*);
 template void gpuBitReversePrefixSumShuffleTwice<float>(float[], int, float*);

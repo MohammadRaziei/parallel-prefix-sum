@@ -107,7 +107,7 @@ int main2() {
 }
 
 int main() {
-    const int N = 2048; 
+    const int N = 4096; 
     std::vector<float> h_input(N);
     for (int i = 0; i < N; ++i) {
         h_input[i] = static_cast<float>(1); 
@@ -120,7 +120,7 @@ int main() {
     printArray(h_input.data(), N);
 
     cpuPrefixSum(cpu_buffer.data(), N);
-    printArray(cpu_buffer.data(), N, -1);
+    // printArray(cpu_buffer.data(), N, -1);
 
     gpuBitReversePrefixSumShuffleTwice(gpu_buffer.data(), N);
     printArray(gpu_buffer.data(), N, -1);
