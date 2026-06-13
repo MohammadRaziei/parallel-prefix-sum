@@ -9,5 +9,7 @@ template <typename T> void gpuVanillaPrefixSum(T h_data[], int n, float* kernel_
 template <typename T> void gpuBitReversePrefixSumSimple(T h_data[], int n, float* kernel_time_ms = nullptr);
 template <typename T> void gpuBitReversePrefixSumWarp(T h_data[], int n, float* kernel_time_ms = nullptr);
 template <typename T> void gpuBitReversePrefixSumShuffle(T h_data[], int n, float* kernel_time_ms = nullptr);
+template <typename T> void gpuBitReversePrefixSumShuffleTwice(T h_data[], int n, float* kernel_time_ms = nullptr);
+
 
 #endif

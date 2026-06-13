@@ -146,7 +146,7 @@ __global__ void vannilaKernel(T *ac) {
 
 
 template <typename T, typename KernelFunc>
-void gpuScanRunner(KernelFunc kernel, T h_data[], int size, float shared_mem_vs_block_size, float* kernel_time_ms = nullptr) {
+void gpuScanRunner(KernelFunc kernel, T h_data[], int size, float* kernel_time_ms = nullptr, int shift = 0, float shared_mem_vs_block_size = 1.f) {
     T* d_data;
     const size_t n_bytes = size * sizeof(T);
 
@@ -158,8 +158,9 @@ void gpuScanRunner(KernelFunc kernel, T h_data[], int size, float shared_mem_vs_
 
     // 3. Launch Configuration
     // For single-block algorithms (like Vanilla Blelloch)
+    size >>= shift;
     const int blockSize = (size < 1024) ? ((size + 31) / 32) * 32 : 1024;
-    const int gridSize = (size + blockSize - 1) / blockSize;
+    const int gridSize = ((size + blockSize - 1) / blockSize) << shift;
 
     // 4. Kernel Launch
     // We pass the kernel function and the dynamic shared memory size
@@ -184,7 +185,7 @@ void gpuScanRunner(KernelFunc kernel, T h_data[], int size, float shared_mem_vs_
 
 template <typename T>
 void gpuVanillaPrefixSum(T h_data[], int n, float* kernel_time_ms) {
-    gpuScanRunner(vannilaKernel<T>, h_data, n, 1, kernel_time_ms);
+    gpuScanRunner(vannilaKernel<T>, h_data, n, kernel_time_ms);
 }
 
 template void gpuVanillaPrefixSum<int>(int[], int, float*);
@@ -230,7 +231,7 @@ __global__ void bitReverseSimpleKernel(T ac[]){
 
 template <typename T>
 void gpuBitReversePrefixSumSimple(T* h_data, int n, float* kernel_time_ms) {
-    gpuScanRunner(bitReverseSimpleKernel<T>, h_data, n, 1, kernel_time_ms);
+    gpuScanRunner(bitReverseSimpleKernel<T>, h_data, n, kernel_time_ms);
 }
 template void gpuBitReversePrefixSumSimple<int>(int[], int, float*);
 template void gpuBitReversePrefixSumSimple<float>(float[], int, float*);
@@ -290,7 +291,7 @@ __global__ void bitReverseWarpKernel(T ac[]){
 
 template <typename T>
 void gpuBitReversePrefixSumWarp(T* h_data, int n, float* kernel_time_ms) {
-    gpuScanRunner(bitReverseWarpKernel<T>, h_data, n, 1, kernel_time_ms);
+    gpuScanRunner(bitReverseWarpKernel<T>, h_data, n, kernel_time_ms);
 }
 template void gpuBitReversePrefixSumWarp<int>(int[], int, float*);
 template void gpuBitReversePrefixSumWarp<float>(float[], int, float*);
@@ -370,9 +371,91 @@ __global__ void bitReverseShuffleKernel(T ac[]){
 
 template <typename T>
 void gpuBitReversePrefixSumShuffle(T* h_data, int n, float* kernel_time_ms) {
-    gpuScanRunner(bitReverseShuffleKernel<T>, h_data, n, 1, kernel_time_ms);
+    gpuScanRunner(bitReverseShuffleKernel<T>, h_data, n, kernel_time_ms);
 }
 template void gpuBitReversePrefixSumShuffle<int>(int[], int, float*);
 template void gpuBitReversePrefixSumShuffle<float>(float[], int, float*);
 template void gpuBitReversePrefixSumShuffle<unsigned int>(unsigned int[], int, float*);
 
+template <typename T>
+__global__ void bitReverseShuffleTwiceKernel(T ac[]){
+    extern __shared__ unsigned char shared_memory[]; // allocated on invocation
+    T* sdata = reinterpret_cast<T*>(shared_memory);
+    T lastElement;
+    const int n = blockDim.x << 1;
+    const int tid = threadIdx.x;
+    const int idx = n - 1 - bit_reverse_pow2(tid, n);
+    const int offsetIdx = blockIdx.x * n;
+    sdata[idx] = ac[offsetIdx + tid];
+    sdata[idx - 1] = ac[offsetIdx + tid + blockDim.x];
+    T v, remote, r_up, r_down;
+    unsigned int s;
+    for (s = n; s >= 32; s >>= 1) {
+        __syncthreads();
+        if (tid < s) {
+            sdata[tid] += sdata[tid + s];
+        }
+    }
+    if (tid < 32) {
+        v = sdata[tid];
+
+        // Warp Upsweep
+        remote = __shfl_down_sync(0xffffffff, v, 16); if (tid < 16) v += remote;
+        remote = __shfl_down_sync(0xffffffff, v, 8);  if (tid < 8)  v += remote;
+        remote = __shfl_down_sync(0xffffffff, v, 4);  if (tid < 4)  v += remote;
+        remote = __shfl_down_sync(0xffffffff, v, 2);  if (tid < 2)  v += remote;
+        remote = __shfl_down_sync(0xffffffff, v, 1);  if (tid < 1)  v += remote;
+
+        // Clear root and save total sum
+        if (tid == 0) {
+            lastElement = v;
+            v = 0;
+        }
+
+        // Warp Downsweep (Manual Unroll)
+        // Stride 1
+        r_up = __shfl_up_sync(0xffffffff, v, 1); r_down = __shfl_down_sync(0xffffffff, v, 1);
+        if (tid < 1) v += r_down; else if (tid < 2) v = r_up;
+
+        // Stride 2
+        r_up = __shfl_up_sync(0xffffffff, v, 2); r_down = __shfl_down_sync(0xffffffff, v, 2);
+        if (tid < 2) v += r_down; else if (tid < 4) v = r_up;
+
+        // Stride 4
+        r_up = __shfl_up_sync(0xffffffff, v, 4); r_down = __shfl_down_sync(0xffffffff, v, 4);
+        if (tid < 4) v += r_down; else if (tid < 8) v = r_up;
+
+        // Stride 8
+        r_up = __shfl_up_sync(0xffffffff, v, 8); r_down = __shfl_down_sync(0xffffffff, v, 8);
+        if (tid < 8) v += r_down; else if (tid < 16) v = r_up;
+
+        // Stride 16
+        r_up = __shfl_up_sync(0xffffffff, v, 16); r_down = __shfl_down_sync(0xffffffff, v, 16);
+        if (tid < 16) v += r_down; else if (tid < 32) v = r_up;
+
+        sdata[tid] = v;
+    }
+    for (s = 32; s <= n; s <<= 1) {
+        if (tid < s) {
+            v = sdata[tid + s];
+            sdata[tid + s] = sdata[tid];
+            sdata[tid] += v;
+        }
+        __syncthreads();
+    }
+    if(tid == 0) {
+        ac[offsetIdx + n - 1] = lastElement;
+    }
+    else {
+        ac[offsetIdx + tid - 1] = sdata[idx];
+    }
+    ac[offsetIdx + tid - 1 + blockDim.x] = sdata[idx - 1];
+}
+
+template <typename T>
+void gpuBitReversePrefixSumShuffleTwice(T* h_data, int n, float* kernel_time_ms) {
+    gpuScanRunner(bitReverseShuffleKernel<T>, h_data, n, kernel_time_ms, 1, 2.f);
+}
+template void gpuBitReversePrefixSumShuffleTwice<int>(int[], int, float*);
+template void gpuBitReversePrefixSumShuffleTwice<float>(float[], int, float*);
+template void gpuBitReversePrefixSumShuffleTwice<unsigned int>(unsigned int[], int, float*);
