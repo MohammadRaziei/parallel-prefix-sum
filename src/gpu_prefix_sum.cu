@@ -793,7 +793,7 @@ __global__ void bitReverseShuffleOptimizedKernel(T ac[]){
 
 template <typename T>
 void gpuBitReverseSwizzledPrefixSum(T* h_data, int n, float* kernel_time_ms) {
-    gpuScanRunner(swizzledKernel<T>, h_data, n, kernel_time_ms);
+    gpuScanRunner(bitReverseShuffleOptimizedKernel<T>, h_data, n, kernel_time_ms);
 }
 template void gpuBitReverseSwizzledPrefixSum<int>(int[], int, float*);
 template void gpuBitReverseSwizzledPrefixSum<float>(float[], int, float*);
