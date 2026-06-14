@@ -26,6 +26,8 @@ struct PrefixSumFixture {
         {"BitReverseShuffle-Blelloch-Int", gpuBitReversePrefixSumShuffle<int>},
         {"BitReverseShuffleTwice-Blelloch-Int", gpuBitReversePrefixSumShuffleTwice<int>},
         {"BitReverseSwizzled-Blelloch-Int", gpuBitReverseSwizzledPrefixSum<int>},
+        {"BitReverseShuffleSwizzled-Blelloch-Int", gpuBitReverseShuffleSwizzledPrefixSum<int>},
+        {"SwizzledShuffle-Blelloch-Int", gpuSwizzledShufflePrefixSum<int>},
         // {"BitReverseVectorize-Blelloch-Int", gpuBitReversePrefixSumVectorize<int>} 
     };
 
@@ -38,6 +40,8 @@ struct PrefixSumFixture {
         {"BitReverseShuffle-Blelloch-Float", gpuBitReversePrefixSumShuffle<float>},
         {"BitReverseShuffleTwice-Blelloch-Float", gpuBitReversePrefixSumShuffleTwice<float>}, 
         {"BitReverseSwizzled-Blelloch-Float", gpuBitReverseSwizzledPrefixSum<float>},
+        {"BitReverseShuffleSwizzled-Blelloch-Float", gpuBitReverseShuffleSwizzledPrefixSum<float>},
+        {"SwizzledShuffle-Blelloch-Float", gpuSwizzledShufflePrefixSum<float>},
         // {"BitReverseVectorize-Blelloch-Float", gpuBitReversePrefixSumVectorize<float>} 
     };
     int current_index;

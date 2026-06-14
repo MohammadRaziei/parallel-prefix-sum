@@ -14,5 +14,9 @@ template <typename T> void gpuBitReversePrefixSumShuffleTwice(T h_data[], int n,
 template <typename T> void gpuBitReversePrefixSumVectorize(T h_data[], int n, float* kernel_time_ms = nullptr);
 template <typename T> void gpuSwizzledPrefixSum(T h_data[], int n, float* kernel_time_ms = nullptr);
 template <typename T> void gpuBitReverseSwizzledPrefixSum(T* h_data, int n, float* kernel_time_ms = nullptr);
+template <typename T> void gpuBitReverseShuffleSwizzledPrefixSum(T* h_data, int n, float* kernel_time_ms = nullptr);
+template <typename T> void gpuSwizzledShufflePrefixSum(T* h_data, int n, float* kernel_time_ms = nullptr);
+
+
 
 #endif

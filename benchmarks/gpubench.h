@@ -77,7 +77,7 @@ public:
     }
 
     void print_results() {
-        const int w_name = 25;
+        const int w_name = 30;
         const int w_val = 12;
         const int w_tp = 15;
 

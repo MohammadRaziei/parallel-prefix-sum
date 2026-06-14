@@ -712,6 +712,158 @@ template void gpuSwizzledPrefixSum<int>(int[], int, float*);
 template void gpuSwizzledPrefixSum<float>(float[], int, float*);
 template void gpuSwizzledPrefixSum<unsigned int>(unsigned int[], int, float*);
 
+template <typename T>
+__global__ void swizzledShuffleBlellochKernel(T *ac) {
+    extern __shared__ unsigned char shared_memory[];
+    T* sdata = reinterpret_cast<T*>(shared_memory);
+    
+    const int n = blockDim.x;
+    const int tid = threadIdx.x;
+    const int globalIdx = blockIdx.x * n + tid;
+
+    // 1. Load from Global to Swizzled Shared Memory
+    sdata[swz(tid)] = ac[globalIdx];
+    __syncthreads();
+
+    int offset = 1;
+
+    // 2. Upsweep (Reduction Phase) in Shared Memory
+    // We stop when we have 32 active nodes (d = 16 threads)
+    for (int d = n >> 1; d > 16; d >>= 1) {
+        if (tid < d) {
+            const int ai = offset * (2 * tid + 1) - 1;
+            const int bi = offset * (2 * tid + 2) - 1;
+            sdata[swz(bi)] += sdata[swz(ai)];
+        }
+        offset <<= 1;
+        __syncthreads();
+    }
+
+    T lastElement = 0;
+
+    // 3. WARP SHUFFLE PHASE (Handling the top 32 elements)
+    // One warp (32 threads) will handle the remainder of the tree
+    if (tid < 32) {
+        // Gather: Each thread picks up one of the 32 scattered active nodes
+        // These nodes are spaced by 'offset'
+        int local_idx = offset * (tid + 1) - 1;
+        T v = sdata[swz(local_idx)];
+
+        // Warp Inclusive Scan (standard prefix sum logic is faster than manual tree)
+        T temp = v;
+        for (int i = 1; i <= 16; i <<= 1) {
+            T remote = __shfl_up_sync(0xffffffff, temp, i);
+            if (tid >= i) temp += remote;
+        }
+
+        // Now 'temp' is the Inclusive Scan of the 32 elements.
+        lastElement = __shfl_sync(0xffffffff, temp, 31);
+
+        // Convert to Exclusive Scan for Blelloch logic
+        v = temp - v;
+
+        // Scatter: Put the exclusive scan results back into shared memory
+        sdata[swz(local_idx)] = v;
+    }
+    __syncthreads();
+
+    // 4. Downsweep Phase in Shared Memory
+    // We start from 32 nodes (d = 32) and go up to n
+    // We need to carefully reset the offset
+    // The warp phase handled the root and the levels where d < 32
+    for (int d = 32; d < n; d <<= 1) {
+        offset >>= 1;
+        __syncthreads();
+        if (tid < d) {
+            const int ai = offset * (2 * tid + 1) - 1;
+            const int bi = offset * (2 * tid + 2) - 1;
+
+            int swz_ai = swz(ai);
+            int swz_bi = swz(bi);
+
+            T tmp = sdata[swz_ai];
+            sdata[swz_ai] = sdata[swz_bi];
+            sdata[swz_bi] += tmp;
+        }
+    }
+    __syncthreads();
+
+    // 5. Store Back to Global Memory (with Inclusive Shift)
+    if (tid == 0) {
+        ac[globalIdx + n - 1] = lastElement;
+    } else {
+        ac[globalIdx - 1] = sdata[swz(tid)];
+    }
+}
+
+template <typename T>
+void gpuSwizzledShufflePrefixSum(T* h_data, int n, float* kernel_time_ms) {
+    gpuScanRunner(swizzledShuffleBlellochKernel<T>, h_data, n, kernel_time_ms);
+}
+template void gpuSwizzledShufflePrefixSum<int>(int[], int, float*);
+template void gpuSwizzledShufflePrefixSum<float>(float[], int, float*);
+template void gpuSwizzledShufflePrefixSum<unsigned int>(unsigned int[], int, float*);
+
+
+
+template <typename T>
+__global__ void bitReverseSwizzleddKernel(T ac[]){
+    extern __shared__ unsigned char shared_memory[];
+    T* sdata = reinterpret_cast<T*>(shared_memory);
+    T lastElement;
+    const int n = blockDim.x;
+    const int tid = threadIdx.x;
+    const int offsetIdx = blockIdx.x * n;
+
+    // Use fast hardware bit-reverse
+    const int idx = n - 1 - bit_reverse_pow2(tid, n);
+
+    // --- INITIAL LOAD (Fixed 32-way bank conflict) ---
+    sdata[swz(idx)] = ac[offsetIdx + tid];
+
+    __syncthreads();
+
+    T v, remote, r_up, r_down;
+    unsigned int s;
+
+    // --- UPSWEEP TREE ---
+    for (s = n >> 1; s > 0; s >>= 1) {
+        __syncthreads();
+        if (threadIdx.x < s) {
+            sdata[swz(tid)] += sdata[swz(tid + s)];
+        }
+    }
+    if (threadIdx.x == 0) {
+        lastElement = sdata[0];
+        sdata[swz(0)] = 0;  // clear the last element
+    }
+    for (s = 1; s < n; s <<= 1) {
+        __syncthreads();
+        if (threadIdx.x < s) {
+            v = sdata[swz(tid + s)];
+            sdata[swz(tid + s)] = sdata[swz(tid)];
+            sdata[swz(tid)] += v;
+        }
+    }
+    __syncthreads();
+    
+    
+    // --- FINAL STORE (Fixed 32-way bank conflict) ---
+    if(tid == 0) {
+        ac[offsetIdx + n - 1] = lastElement;
+    } else {
+        ac[offsetIdx + tid - 1] = sdata[swz(idx)];
+    }
+}
+
+template <typename T>
+void gpuBitReverseSwizzledPrefixSum(T* h_data, int n, float* kernel_time_ms) {
+    gpuScanRunner(bitReverseSwizzleddKernel<T>, h_data, n, kernel_time_ms);
+}
+template void gpuBitReverseSwizzledPrefixSum<int>(int[], int, float*);
+template void gpuBitReverseSwizzledPrefixSum<float>(float[], int, float*);
+template void gpuBitReverseSwizzledPrefixSum<unsigned int>(unsigned int[], int, float*);
+
 
 
 
@@ -792,9 +944,9 @@ __global__ void bitReverseShuffleOptimizedKernel(T ac[]){
 }
 
 template <typename T>
-void gpuBitReverseSwizzledPrefixSum(T* h_data, int n, float* kernel_time_ms) {
+void gpuBitReverseShuffleSwizzledPrefixSum(T* h_data, int n, float* kernel_time_ms) {
     gpuScanRunner(bitReverseShuffleOptimizedKernel<T>, h_data, n, kernel_time_ms);
 }
-template void gpuBitReverseSwizzledPrefixSum<int>(int[], int, float*);
-template void gpuBitReverseSwizzledPrefixSum<float>(float[], int, float*);
-template void gpuBitReverseSwizzledPrefixSum<unsigned int>(unsigned int[], int, float*);
+template void gpuBitReverseShuffleSwizzledPrefixSum<int>(int[], int, float*);
+template void gpuBitReverseShuffleSwizzledPrefixSum<float>(float[], int, float*);
+template void gpuBitReverseShuffleSwizzledPrefixSum<unsigned int>(unsigned int[], int, float*);

@@ -47,6 +47,16 @@ int main() {
     bench.run("Bit-Reverse Swizzled", total_bytes, [&](float* t) {
         gpuBitReverseSwizzledPrefixSum(h_data.data(), n, t);
     });
+
+    bench.run("Bit-Reverse Shuffle Swizzled", total_bytes, [&](float* t) {
+        gpuBitReverseShuffleSwizzledPrefixSum(h_data.data(), n, t);
+    });
+    
+    bench.run("Swizzled Shuffle", total_bytes, [&](float* t) {
+        gpuSwizzledShufflePrefixSum(h_data.data(), n, t);
+    });
+
+    
     
 
     // Output the beautiful table
