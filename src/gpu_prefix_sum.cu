@@ -382,14 +382,16 @@ __global__ void bitReverseShuffleKernel(T ac[]){
     const int offsetIdx = blockIdx.x * n;
     sdata[idx] = ac[offsetIdx + tid];
     unsigned int s;
-    T v, remote, r_up, r_down;
+    T v, remote, original_v;
     for (s = n >> 1; s >= 32; s >>= 1) {
         __syncthreads();
         if (tid < s) {
             sdata[tid] += sdata[tid + s];
         }
     }
-    if (tid < 32) {
+
+    /*
+        if (tid < 32) {
         v = sdata[tid];
 
         // Warp Upsweep
@@ -426,6 +428,20 @@ __global__ void bitReverseShuffleKernel(T ac[]){
         r_up = __shfl_up_sync(0xffffffff, v, 16); r_down = __shfl_down_sync(0xffffffff, v, 16);
         if (tid < 16) v += r_down; else if (tid < 32) v = r_up;
 
+        sdata[tid] = v;
+    }
+    */
+
+    if (tid < 32) {
+        v = sdata[tid];
+        original_v = v; 
+        #pragma unrol for
+        for (int i = 1; i <= 16; i <<= 1) {
+            remote = __shfl_down_sync(0xffffffff, v, i);
+            if (tid + i < 32) v += remote;
+        }       
+        lastElement = v;
+        v -= original_v;
         sdata[tid] = v;
     }
     for (s = 32; s < n; s <<= 1) {
